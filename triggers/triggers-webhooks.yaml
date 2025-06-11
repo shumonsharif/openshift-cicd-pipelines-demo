@@ -1,4 +1,4 @@
-apiVersion: triggers.tekton.dev/v1alpha1
+apiVersion: triggers.tekton.dev/v1beta1
 kind: TriggerTemplate
 metadata:
   name: hello-ci-trigger-template
@@ -20,22 +20,27 @@ spec:
           name: hello-ci-pipeline
         params:
           - name: GIT_URL
-            value: $(params.GIT_URL)
+            value: $(tt.params.GIT_URL)
           - name: GIT_REVISION
-            value: $(params.GIT_REVISION)
+            value: $(tt.params.GIT_REVISION)
           - name: APPLICATION
-            value: $(params.APPLICATION)
+            value: $(tt.params.APPLICATION)
           - name: PROJECT_PREFFIX
-            value: $(params.PROJECT_PREFFIX)
+            value: $(tt.params.PROJECT_PREFFIX)
           - name: CONTEXT_PATH
-            value: $(params.CONTEXT_PATH)
+            value: $(tt.params.CONTEXT_PATH)
+        podTemplate:
+          securityContext:
+            # This tells Kubernetes to make the volume's contents owned
+            # by this group ID, making it writable by the container.
+            fsGroup: 65534            
         workspaces:
           - name: source
             persistentVolumeClaim:
               claimName: hello-pvc
             subPath: hello-ci
 ---
-apiVersion: triggers.tekton.dev/v1alpha1
+apiVersion: triggers.tekton.dev/v1beta1
 kind: TriggerTemplate
 metadata:
   name: hello-cd-trigger-template
@@ -57,22 +62,27 @@ spec:
           name: hello-cd-pipeline
         params:
           - name: GIT_URL
-            value: $(params.GIT_URL)
+            value: $(tt.params.GIT_URL)
           - name: GIT_REVISION
-            value: $(params.GIT_REVISION)
+            value: $(tt.params.GIT_REVISION)
           - name: APPLICATION
-            value: $(params.APPLICATION)
+            value: $(tt.params.APPLICATION)
           - name: PROJECT_PREFFIX
-            value: $(params.PROJECT_PREFFIX)
+            value: $(tt.params.PROJECT_PREFFIX)
           - name: CONTEXT_PATH
-            value: $(params.CONTEXT_PATH)
+            value: $(tt.params.CONTEXT_PATH)
+        podTemplate:
+          securityContext:
+            # This tells Kubernetes to make the volume's contents owned
+            # by this group ID, making it writable by the container.
+            fsGroup: 65534
         workspaces:
           - name: source
             persistentVolumeClaim:
               claimName: hello-pvc
             subPath: hello-cd
 ---
-apiVersion: triggers.tekton.dev/v1alpha1
+apiVersion: triggers.tekton.dev/v1beta1
 kind: TriggerBinding
 metadata:
   name: github-binding
@@ -84,7 +94,7 @@ spec:
     - name: GIT_REVISION
       value: $(body.head_commit.id)
 ---
-apiVersion: triggers.tekton.dev/v1alpha1
+apiVersion: triggers.tekton.dev/v1beta1
 kind: TriggerBinding
 metadata:
   name: hello-binding
@@ -98,7 +108,7 @@ spec:
     - name: CONTEXT_PATH
       value: ./application
 ---
-apiVersion: triggers.tekton.dev/v1alpha1
+apiVersion: triggers.tekton.dev/v1beta1
 kind: EventListener
 metadata:
   name: hello-event-listener
@@ -108,34 +118,54 @@ spec:
   triggers:
     - name: hello-ci-event-listener
       interceptors:
-        - cel:
-            filter: "body.ref.contains('develop')"
-        - github:
-            secretRef:
-              secretName: github-secret
-              secretKey: secretToken
-            eventTypes:
-              - push
+        - name: "Filter for develop branch"
+          ref:
+            name: "cel"
+            kind: "ClusterInterceptor"
+          params:
+            - name: "filter"
+              value: "body.ref.contains('develop')"
+        - name: "GitHub Validation"
+          ref:
+            name: "github"
+            kind: "ClusterInterceptor"
+          params:
+            - name: secretRef
+              value:
+                secretName: github-secret
+                secretKey: secretToken
+            - name: eventTypes
+              value: ["push"]
       bindings:
-        - name: github-binding
-        - name: hello-binding
+        - ref: github-binding
+        - ref: hello-binding
       template:
-        name: hello-ci-trigger-template
+        ref: hello-ci-trigger-template
     - name: hello-cd-event-listener
       interceptors:
-        - cel:
-            filter: "body.ref.contains('master')"
-        - github:
-            secretRef:
-              secretName: github-secret
-              secretKey: secretToken
-            eventTypes:
-              - push
+        - name: "Filter for master branch"
+          ref:
+            name: "cel"
+            kind: "ClusterInterceptor"
+          params:
+            - name: "filter"
+              value: "body.ref.contains('master')"
+        - name: "GitHub Validation"
+          ref:
+            name: "github"
+            kind: "ClusterInterceptor"
+          params:
+            - name: secretRef
+              value:
+                secretName: github-secret
+                secretKey: secretToken
+            - name: eventTypes
+              value: ["push"]
       bindings:
-        - name: github-binding
-        - name: hello-binding
+        - ref: github-binding
+        - ref: hello-binding
       template:
-        name: hello-cd-trigger-template
+        ref: hello-cd-trigger-template
 ---
 apiVersion: route.openshift.io/v1
 kind: Route

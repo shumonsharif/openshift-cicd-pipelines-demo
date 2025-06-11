@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: debug-pvc-shell
+spec:
+  restartPolicy: Never
+  volumes:
+    - name: storage
+      persistentVolumeClaim:
+        claimName: hello-pvc
+  containers:
+    - name: debug-container
+      image: centos:7
+      command: ["/bin/sh", "-c", "sleep infinity"]
+      volumeMounts:
+        - name: storage
+          mountPath: /data

@@ -1,3 +1,4 @@
+# Service Account for Tekton Triggers EventListener
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -6,20 +7,27 @@ metadata:
 secrets:
   - name: github-secret
 ---
+# Role for namespace-scoped Tekton Triggers resources
 kind: Role
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
-  name: triggers
+  name: triggers-role
   namespace: hello-dev
 rules:
+  # Permissions for resources in the 'triggers.tekton.dev' API group
   - apiGroups:
       - triggers.tekton.dev
     resources:
       - eventlisteners
       - triggerbindings
       - triggertemplates
+      - triggers
+      - interceptors
     verbs:
       - get
+      - list
+      - watch
+  # Permissions for core Kubernetes resources
   - apiGroups:
       - ""
     resources:
@@ -30,19 +38,27 @@ rules:
       - get
       - list
       - watch
+  # Permissions to create and patch Kubernetes events
+  - apiGroups:
+      - ""
+    resources:
+      - events
+    verbs:
+      - create
+      - patch
+  # Permissions for resources in the 'tekton.dev' API group (e.g., PipelineRuns)
   - apiGroups:
       - tekton.dev
     resources:
-      - pipelineruns
-      - pipelineresources
-      - taskruns
+      - "*"
     verbs:
-      - create
+      - "*"
 ---
+# RoleBinding to grant the Role to the ServiceAccount within the namespace
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
-  name: triggers
+  name: triggers-role-binding
   namespace: hello-dev
 subjects:
   - kind: ServiceAccount
@@ -50,4 +66,33 @@ subjects:
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
-  name: triggers
+  name: triggers-role
+---
+# ClusterRole for cluster-scoped Tekton Triggers resources
+kind: ClusterRole
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: triggers-cluster-role
+rules:
+  - apiGroups:
+      - triggers.tekton.dev
+    resources:
+      - clusterinterceptors
+    verbs:
+      - get
+      - list
+      - watch
+---
+# ClusterRoleBinding to grant the ClusterRole to the ServiceAccount
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: triggers-cluster-role-binding
+subjects:
+  - kind: ServiceAccount
+    name: triggers
+    namespace: hello-dev
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: triggers-cluster-role
